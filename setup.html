@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Setup — CámaraStock v4</title>
+<style>
+  body{font-family:monospace;background:#0d1117;color:#f0f6fc;padding:24px;max-width:580px;margin:0 auto}
+  h1{color:#e94560;margin-bottom:16px;font-size:20px}
+  p{color:#8b949e;font-size:13px;margin-bottom:18px;line-height:1.6}
+  .log{background:#161b22;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:16px;min-height:160px;white-space:pre-wrap;font-size:13px;line-height:1.8;margin-bottom:18px}
+  .ok{color:#10b981}.err{color:#ef4444}.info{color:#f59e0b}
+  button{background:#e94560;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:monospace}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .done{background:#161b22;border:1px solid #10b981;border-radius:10px;padding:16px;margin-top:16px;display:none}
+  .done h3{color:#10b981;margin-bottom:10px}
+  .done p{color:#8b949e;font-size:12px;margin:0;line-height:1.8}
+</style>
+</head>
+<body>
+<h1>⚙️ Setup Inicial — CámaraStock v4</h1>
+<p>Crea las 10 categorías base en Firestore.<br>
+<strong style="color:#e94560">Ejecutar UNA SOLA VEZ.</strong></p>
+
+<div class="log" id="log">Presiona el botón para iniciar...</div>
+<button id="btn" onclick="run()">▶ Ejecutar Setup</button>
+
+<div class="done" id="done">
+  <h3>✅ Setup completado</h3>
+  <p>
+    🔑 <strong>PIN inicial Encargado:</strong> 1234<br>
+    🚚 <strong>Bodeguero:</strong> sin PIN (acceso libre por defecto)<br><br>
+    <strong>Áreas configuradas:</strong><br>
+    🌅 Desayuno &nbsp;·&nbsp; 🍮 Postres &nbsp;·&nbsp; 🍽️ Buffet &nbsp;·&nbsp; 🍹 Barra<br><br>
+    Para cambiar PINs y nombres de áreas:<br>
+    Entra como Encargado → toca <strong>"⚙ Config"</strong> en el header<br><br>
+    <strong>Próximos pasos:</strong><br>
+    1. Abre la app y entra como Encargado (PIN: 1234)<br>
+    2. Ve a Productos → crea tu base de datos de productos<br>
+    3. Ingresa la primera factura para agregar stock<br>
+    4. Las áreas ya pueden empezar a solicitar
+  </p>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyDwGbUBhWuvTgMDvHr_GVonMIR-lPAxFGs",
+  authDomain:        "camarastock-prod-2ab75.firebaseapp.com",
+  projectId:         "camarastock-prod-2ab75",
+  storageBucket:     "camarastock-prod-2ab75.firebasestorage.app",
+  messagingSenderId: "1020282499141",
+  appId:             "1:1020282499141:web:e843c7425759085ab9332c"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+const CATS = [
+  {nombre:'Carnes y Aves',       subcategorias:['Vacuno','Cerdo','Pollo','Cordero','Pavo','Embutidos']},
+  {nombre:'Mariscos y Pescados', subcategorias:['Pescados frescos','Mariscos','Ahumados','Congelados']},
+  {nombre:'Lácteos y Huevos',    subcategorias:['Leche','Quesos','Yogurt','Mantequilla','Huevos','Crema']},
+  {nombre:'Frutas y Verduras',   subcategorias:['Frutas','Verduras de hoja','Tubérculos','Hierbas']},
+  {nombre:'Abarrotes',           subcategorias:['Harinas y pastas','Arroz y legumbres','Conservas','Aceites','Salsas']},
+  {nombre:'Bebidas',             subcategorias:['Aguas','Jugos','Bebidas azucaradas','Energéticas']},
+  {nombre:'Bebidas Alcohólicas', subcategorias:['Cervezas','Vinos','Destilados','Licores']},
+  {nombre:'Panadería',           subcategorias:['Pan','Masas','Repostería','Insumos']},
+  {nombre:'Limpieza e Higiene',  subcategorias:['Detergentes','Desinfectantes','Desechables']},
+  {nombre:'Congelados',          subcategorias:['Helados','Vegetales congelados','Precocidos']},
+];
+
+const log = document.getElementById('log');
+function w(msg, t='') { log.innerHTML += `<span class="${t}">${msg}</span>\n`; log.scrollTop = log.scrollHeight; }
+
+window.run = async function() {
+  const btn = document.getElementById('btn');
+  btn.disabled = true; log.innerHTML = '';
+  w('🚀 Creando categorías base...\n', 'info');
+  for (const cat of CATS) {
+    try {
+      await addDoc(collection(db, 'categorias'), { ...cat, creadoEn: serverTimestamp() });
+      w(`✅ ${cat.nombre}`, 'ok');
+    } catch(e) {
+      w(`❌ ${cat.nombre}: ${e.message}`, 'err');
+    }
+  }
+  w('\n✨ ¡Setup completado!', 'ok');
+  document.getElementById('done').style.display = 'block';
+};
+</script>
+</body>
+</html>
