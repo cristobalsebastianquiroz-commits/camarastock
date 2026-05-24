@@ -1,6 +1,6 @@
 {
-  "name": "CámaraStock",
-  "short_name": "CámaraStock",
+  "name": "SANTERRA",
+  "short_name": "SANTERRA",
   "description": "Sistema de inventario y bodega en tiempo real",
   "start_url": "./index.html",
   "display": "standalone",
