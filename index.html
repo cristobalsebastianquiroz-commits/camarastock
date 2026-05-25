@@ -409,9 +409,26 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);min-h
     <div class="mt-sub">La ficha define precio e impuesto de forma permanente</div>
     <div class="fr" style="margin-bottom:11px">
       <div class="fg" style="margin-bottom:0"><label class="fl">Código</label><input class="fi" type="text" id="pp-cod" placeholder="PRD-001"></div>
-      <div class="fg" style="margin-bottom:0"><label class="fl">Unidad de medida</label>
+      <div class="fg" style="margin-bottom:0"><label class="fl">Unidad de despacho *</label>
         <select class="fi" id="pp-unidad"><option value="unidad">Unidad</option><option value="kg">Kg</option><option value="lt">Lt</option><option value="g">Gramo</option><option value="ml">Ml</option><option value="caja">Caja</option><option value="bolsa">Bolsa</option><option value="bandeja">Bandeja</option><option value="botella">Botella</option><option value="lata">Lata</option></select>
       </div>
+    </div>
+
+    <!-- Conversión compra/despacho -->
+    <div style="background:var(--blued);border:1px solid var(--blueb);border-radius:10px;padding:12px;margin-bottom:11px">
+      <div style="font-size:10px;color:var(--blue);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">📦 ¿Se compra en una unidad mayor? (opcional)</div>
+      <div style="font-size:11px;color:var(--txm);margin-bottom:10px">Ejemplo: compras por Manga pero despachas por Kg</div>
+      <div class="fr" style="margin-bottom:10px">
+        <div class="fg" style="margin-bottom:0">
+          <label class="fl">Unidad de compra</label>
+          <input class="fi" type="text" id="pp-ucompra" placeholder="Ej: Manga, Caja, Saco" oninput="calcConversion()">
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label class="fl">Unidades por bulto</label>
+          <input class="fi" type="number" id="pp-conv" placeholder="Ej: 10" min="1" step="0.01" oninput="calcConversion()">
+        </div>
+      </div>
+      <div id="conv-preview" style="display:none;background:var(--sf2);border-radius:8px;padding:10px;font-size:12px;color:var(--txm);line-height:1.8"></div>
     </div>
     <div class="fg"><label class="fl">Nombre del producto *</label><input class="fi" type="text" id="pp-nombre" placeholder="Ej: Azúcar blanca"></div>
     <div class="fr" style="margin-bottom:11px">
@@ -933,8 +950,21 @@ function fnBuscar(q){
 
 function fnAdd(pid){
   const p=prods.find(x=>x.id===pid);if(!p)return;
-  if(fnItems.find(x=>x.pid===pid)){toast(`${p.nombre} ya está en la factura — ajusta la cantidad`,'warn');return;}
-  fnItems.push({pid,nombre:p.nombre,cantidad:1,precio:p.precioTotal||0,unidad:p.unidadMedida||'unidad'});
+  if(fnItems.find(x=>x.pid===pid)){toast(`${p.nombre} ya está — ajusta la cantidad`,'warn');return;}
+  const tieneConv=p.unidadCompra&&p.factorConversion>1;
+  // Si tiene conversión, precio sugerido = precio unitario × factor (precio por bulto)
+  const precioSugerido=tieneConv
+    ? Math.round((p.precioTotal||0)*p.factorConversion)
+    : (p.precioTotal||0);
+  fnItems.push({
+    pid,
+    nombre:p.nombre,
+    cantidad:1,
+    precio:precioSugerido,
+    unidad:p.unidadMedida||'unidad',
+    unidadCompra:p.unidadCompra||null,
+    factorConversion:p.factorConversion||1,
+  });
   toast(`✓ ${p.nombre} agregado`);renderFnItems();
   const q=document.getElementById('fn-buscar').value;if(q)fnBuscar(q);
 }
@@ -943,8 +973,13 @@ function renderFnItems(){
   const el=document.getElementById('fn-items');const emp=document.getElementById('fn-empty');
   if(fnItems.length===0){el.innerHTML='';emp.style.display='block';calcFnTotal();return;}
   emp.style.display='none';
-  el.innerHTML=fnItems.map((it,i)=>`
-    <div class="ci" style="flex-direction:column;align-items:stretch;gap:6px">
+  el.innerHTML=fnItems.map((it,i)=>{
+    const tieneConv=it.unidadCompra&&it.factorConversion>1;
+    const stockResultante=tieneConv?it.cantidad*it.factorConversion:it.cantidad;
+    const unidadMostrar=tieneConv?it.unidadCompra:it.unidad;
+    const precioLabel=tieneConv?`Precio por ${it.unidadCompra}:`:'Precio unit.:';
+    const convInfo=tieneConv?`<div style="font-size:11px;color:var(--blue);margin-top:4px">📦 ${it.cantidad} ${it.unidadCompra} × ${it.factorConversion} ${it.unidad} = <strong>${stockResultante} ${it.unidad}</strong> al stock · Costo/${it.unidad}: <strong>${clp(it.precio/it.factorConversion)}</strong></div>`:'';
+    return`<div class="ci" style="flex-direction:column;align-items:stretch;gap:6px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div class="ci-nom">${it.nombre}</div>
         <button class="ci-del" onclick="fnDel(${i})">✕</button>
@@ -954,15 +989,17 @@ function renderFnItems(){
           <button class="ci-btn ci-m" onclick="fnChg(${i},-1)">−</button>
           <span class="ci-n">${it.cantidad}</span>
           <button class="ci-btn ci-p" onclick="fnChg(${i},1)">+</button>
-          <span style="font-size:12px;color:var(--txm)">${it.unidad}</span>
+          <span style="font-size:12px;color:var(--txm)">${unidadMostrar}</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex:1">
-          <span style="font-size:11px;color:var(--txm);white-space:nowrap">Precio unit.:</span>
+          <span style="font-size:11px;color:var(--txm);white-space:nowrap">${precioLabel}</span>
           <input type="number" style="flex:1;min-width:80px;background:var(--sf);border:1.5px solid var(--bd2);border-radius:7px;color:var(--tx);font-family:'Inter',sans-serif;font-size:14px;font-weight:700;padding:5px 8px;outline:none;-webkit-appearance:none;text-align:right" value="${it.precio}" min="0" oninput="fnPrecio(${i},this.value)">
         </div>
         <div style="font-size:13px;color:var(--green);font-weight:700;white-space:nowrap">= ${clp(it.cantidad*it.precio)}</div>
       </div>
-    </div>`).join('');
+      ${convInfo}
+    </div>`;
+  }).join('');
   calcFnTotal();
 }
 function fnChg(i,d){fnItems[i].cantidad=Math.max(1,fnItems[i].cantidad+d);renderFnItems();}
@@ -976,7 +1013,23 @@ async function guardarFactura(){
   if(fnItems.length===0){toast('Agrega al menos un producto','err');return;}
   const btn=document.getElementById('btn-gfact');btn.disabled=true;btn.textContent='Guardando...';
   try{
-    const items=fnItems.map(it=>({productoId:it.pid,nombreProducto:it.nombre,cantidad:it.cantidad,precioUnitario:it.precio,subtotal:it.cantidad*it.precio,unidadMedida:it.unidad}));
+    const items=fnItems.map(it=>{
+      const tieneConv=it.unidadCompra&&it.factorConversion>1;
+      const cantStockReal=tieneConv?it.cantidad*it.factorConversion:it.cantidad;
+      const precioUnitReal=tieneConv?it.precio/it.factorConversion:it.precio;
+      return{
+        productoId:it.pid,
+        nombreProducto:it.nombre,
+        cantidad:it.cantidad,                 // bultos comprados (ej: 2 mangas)
+        cantidadStock:cantStockReal,           // unidades al stock (ej: 20 kg)
+        unidadCompra:it.unidadCompra||null,
+        factorConversion:it.factorConversion||1,
+        precioUnitario:it.precio,             // precio por bulto
+        precioUnitStock:Math.round(precioUnitReal), // precio por unidad de stock
+        subtotal:it.cantidad*it.precio,
+        unidadMedida:it.unidad,
+      };
+    });
     const tot=items.reduce((a,it)=>a+it.subtotal,0);
     const ref=await addDoc(collection(db,'facturas'),{
       numeroFactura:document.getElementById('fn-num').value.trim(),
@@ -987,7 +1040,12 @@ async function guardarFactura(){
     });
     for(const it of items){
       const r=doc(db,'productos',it.productoId);const s=await getDoc(r);
-      if(s.exists())await updateDoc(r,{stock:(s.data().stock||0)+it.cantidad,actualizadoEn:serverTimestamp()});
+      // Sumar cantidadStock (unidades reales) no bultos
+      if(s.exists())await updateDoc(r,{
+        stock:(s.data().stock||0)+(it.cantidadStock||it.cantidad),
+        precioTotal:it.precioUnitStock||it.precioUnitario, // actualizar precio unitario
+        actualizadoEn:serverTimestamp()
+      });
     }
     // Movimiento de ingreso
     await addDoc(collection(db,'movimientos'),{
@@ -1047,17 +1105,55 @@ function abrirProd(id=null){
   const sel=document.getElementById('pp-cat');
   sel.innerHTML='<option value="">Seleccionar...</option>'+cats.map(c=>`<option value="${c.nombre}" ${c.nombre===p?.categoria?'selected':''}>${c.nombre}</option>`).join('');
   sel.value=p?.categoria||'';
-  renderSubs(p?.subcategoria||'');calcPrev();openM('mo-prod');
+  renderSubs(p?.subcategoria||'');
+  // Conversión
+  document.getElementById('pp-ucompra').value=p?.unidadCompra||'';
+  document.getElementById('pp-conv').value=p?.factorConversion>1?p.factorConversion:'';
+  calcPrev();calcConversion();openM('mo-prod');
 }
 function renderSubs(sel=''){const cat=cats.find(c=>c.nombre===document.getElementById('pp-cat').value);const el=document.getElementById('pp-subcat');el.innerHTML='<option value="">Seleccionar...</option>'+(cat?.subcategorias||[]).map(s=>`<option value="${s}" ${s===sel?'selected':''}>${s}</option>`).join('');if(sel)el.value=sel;}
-function calcPrev(){const n=parseFloat(document.getElementById('pp-neto').value)||0;const tipo=document.getElementById('pp-imp').value;const box=document.getElementById('prev-box');if(n<=0){box.style.display='none';return;}const c=calcImp(n,tipo);box.style.display='block';document.getElementById('prev-neto').textContent=clp(c.neto);document.getElementById('prev-imp-lbl').textContent=c.label+':';document.getElementById('prev-imp').textContent=clp(c.imp);document.getElementById('prev-total').textContent=clp(c.total);}
+function calcConversion(){
+  const ucompra=document.getElementById('pp-ucompra').value.trim();
+  const conv=parseFloat(document.getElementById('pp-conv').value)||0;
+  const neto=parseFloat(document.getElementById('pp-neto').value)||0;
+  const unidad=document.getElementById('pp-unidad').value;
+  const box=document.getElementById('conv-preview');
+  if(!ucompra||conv<=0){box.style.display='none';return;}
+  const tipo=document.getElementById('pp-imp').value;
+  const c=calcImp(neto,tipo);
+  const precioPorUnidad=conv>0?Math.round(c.total/conv):0;
+  box.style.display='block';
+  box.innerHTML=`
+    <strong style="color:var(--blue)">📦 Conversión</strong><br>
+    1 ${ucompra} = <strong>${conv} ${unidad}</strong><br>
+    Precio por ${ucompra}: <strong style="color:var(--green)">${clp(c.total)}</strong> c/imp<br>
+    Precio por ${unidad}: <strong style="color:var(--accent)">${clp(precioPorUnidad)}</strong><br>
+    <span style="color:var(--txd);font-size:10px">Al ingresar 1 ${ucompra} en factura → se suman ${conv} ${unidad} al stock</span>
+  `;
+}
+
+function calcPrev(){const n=parseFloat(document.getElementById('pp-neto').value)||0;const tipo=document.getElementById('pp-imp').value;const box=document.getElementById('prev-box');if(n<=0){box.style.display='none';return;}const c=calcImp(n,tipo);box.style.display='block';document.getElementById('prev-neto').textContent=clp(c.neto);document.getElementById('prev-imp-lbl').textContent=c.label+':';document.getElementById('prev-imp').textContent=clp(c.imp);document.getElementById('prev-total').textContent=clp(c.total);calcConversion();}
 
 async function guardarProd(){
   const nom=document.getElementById('pp-nombre').value.trim();const n=parseFloat(document.getElementById('pp-neto').value)||0;const cat=document.getElementById('pp-cat').value;
   if(!nom||!cat||!n){toast('Completa nombre, categoría y precio neto','err');return;}
   const btn=document.getElementById('btn-gprod');btn.disabled=true;btn.textContent='Guardando...';
   const tipo=document.getElementById('pp-imp').value;const c=calcImp(n,tipo);
-  const data={codigoProducto:document.getElementById('pp-cod').value.trim(),nombre:nom,categoria:cat,subcategoria:document.getElementById('pp-subcat').value,unidadMedida:document.getElementById('pp-unidad').value,stockMinimo:parseInt(document.getElementById('pp-min').value)||5,proveedor:document.getElementById('pp-prov').value.trim(),precioNeto:n,tipoImpuesto:tipo,precioTotal:c.total,totalImpuestos:c.imp,actualizadoEn:serverTimestamp()};
+  const ucompra=document.getElementById('pp-ucompra').value.trim();
+  const conv=parseFloat(document.getElementById('pp-conv').value)||1;
+  const data={
+    codigoProducto:document.getElementById('pp-cod').value.trim(),
+    nombre:nom,categoria:cat,
+    subcategoria:document.getElementById('pp-subcat').value,
+    unidadMedida:document.getElementById('pp-unidad').value,
+    stockMinimo:parseInt(document.getElementById('pp-min').value)||5,
+    proveedor:document.getElementById('pp-prov').value.trim(),
+    precioNeto:n,tipoImpuesto:tipo,precioTotal:c.total,totalImpuestos:c.imp,
+    // Conversión
+    unidadCompra:ucompra||null,
+    factorConversion:ucompra?conv:1,
+    actualizadoEn:serverTimestamp()
+  };
   try{
     if(editProdId)await updateDoc(doc(db,'productos',editProdId),data);
     else await addDoc(collection(db,'productos'),{...data,stock:0,creadoEn:serverTimestamp()});
@@ -1183,7 +1279,7 @@ Object.assign(window,{
   pBuscar,addCart,chgC,rmC,enviarPedido,
   togD,setD,despachar,abrirRechazo,confirmarRechazo,
   fnBuscar,fnAdd,fnChg,fnPrecio,fnDel,abrirFact,guardarFactura,
-  abrirProd,renderSubs,calcPrev,guardarProd,elimProd,
+  abrirProd,renderSubs,calcPrev,calcConversion,guardarProd,elimProd,
   guardarCat,elimCat,cSug,renderCatsM,
   guardarPins,guardarNombres,abrirCfg,
 });
@@ -1191,9 +1287,35 @@ Object.assign(window,{
 // ── PWA ────────────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').then(reg=>{
+    // Verificar actualizaciones cada vez que se abre la app
     reg.update();
-    reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(!nw)return;nw.addEventListener('statechange',()=>{if(nw.state==='installed'&&navigator.serviceWorker.controller){nw.postMessage('SKIP_WAITING');navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());}});});
+
+    // Cuando encuentra una versión nueva, activarla automáticamente
+    reg.addEventListener('updatefound',()=>{
+      const nw=reg.installing;if(!nw)return;
+      nw.addEventListener('statechange',()=>{
+        if(nw.state==='installed'){
+          // Activar sin esperar — la próxima navegación cargará la versión nueva
+          nw.postMessage('SKIP_WAITING');
+        }
+        if(nw.state==='activated'){
+          // Recargar silenciosamente para aplicar cambios
+          window.location.reload();
+        }
+      });
+    });
+
+    // También verificar cuando la app vuelve al frente (iOS background)
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='visible') reg.update();
+    });
+
   }).catch(()=>{});
+
+  // Cuando el SW toma control, recargar para usar versión nueva
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    window.location.reload();
+  });
 }
 if(/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.navigator.standalone)
   setTimeout(()=>toast('Safari → Compartir → "Añadir al inicio"'),3500);
